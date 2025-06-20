@@ -12,9 +12,24 @@
 
 ## Group Members
 **MANDATORY: Add the full names of all group members here:**
-- [Member 1 Full Name]
-- [Member 2 Full Name]
+- Yuval Maliniak
+- Omer Yanay
 
-## Technical Details
+## Additional Features Implemented
+- More detailed court markings (key areas, three-point lines, center circle, free throw arcs)
+- Enhanced stadium environment
+- Multiple camera preset positions (Top-down, Side, Backboard)
+- Extra lighting for better shadow and realism
+- Textured wooden basketball court surface
+
+## Known Issues or Limitations
+- The scoreboard is not seen perfectly from all angles
+- Basket not 100% realistic when looking behind it
+
+## External Assets Used
+- [three.js](https://threejs.org/) library
+- OrbitControls from Three.js examples
+
+## Technical Details & How to run
 - Run the server with: `node index.js`
 - Access at http://localhost:8000 in your web browser

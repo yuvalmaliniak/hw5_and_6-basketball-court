@@ -20,7 +20,7 @@
 - Enhanced stadium environment
 - Multiple camera preset positions (Top-down, Side, Backboard)
 - Extra lighting for better shadow and realism
-- Textured wooden basketball court surface
+- Scoreboard
 
 ## Known Issues or Limitations
 - The scoreboard is not seen perfectly from all angles

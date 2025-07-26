@@ -1,4 +1,7 @@
 import {OrbitControls} from './OrbitControls.js'
+const soundScore = new Audio('src/swish.wav');
+const soundRim = new Audio('src/rim.mp3');
+const soundBounce = new Audio('src/bounce.mp3');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -47,6 +50,30 @@ function createBasketballCourt() {
   // Note: All court lines, hoops, and other elements have been removed
   // Students will need to implement these features
 }
+
+// ----- Global Physics and Control Variables -----
+let ball;
+let velocity = new THREE.Vector3();
+let acceleration = new THREE.Vector3(0, -9.8, 0);
+let isFlying = false;
+let hasScored = false;
+let targetHoop = null;
+let shotsAttempted = 0;
+let shotPower = 0.5;
+let shotsMade = 0;
+let score = 0;
+const radius = 0.24;
+const restitution = 0.7;
+const rimHeight = 3.05;
+const rimRadius = 2;  // Match the TorusGeometry radius used in createHoop
+let targetZ = 0;
+let comboCount = 0;
+const floorY = radius + 0.1;
+let spinAxis = new THREE.Vector3(1, 0, 0);
+let spinSpeed = 0;  // radians per second
+const HALF_WID = 15, HALF_LEN = 7.5;
+const leftRimCenter = new THREE.Vector3(-13.5 + 0.15, rimHeight, 0);   // adjusted by board offset
+const rightRimCenter = new THREE.Vector3(13.5 - 0.15, rimHeight, 0);
 
 // Create all elements
 createBasketballCourt();
@@ -256,12 +283,55 @@ scene.add(net);
 
 //Create basketball
 function createBasketball() {
-  const ballGeo = new THREE.SphereGeometry(0.24, 32, 32);
+  const ballGeo = new THREE.SphereGeometry(radius, 32, 32);
   const ballMat = new THREE.MeshPhongMaterial({ color: 0xFF8C00 });
-  const ball = new THREE.Mesh(ballGeo, ballMat);
-  ball.position.set(0, 0.24, 0);
+  ball = new THREE.Mesh(ballGeo, ballMat);
+  ball.position.set(0, radius, 0);
   ball.castShadow = true;
   scene.add(ball);
+}
+
+function resetBall() {
+  ball.position.set(0, radius, 0);
+  hasScored = false;
+  velocity.set(0, 0, 0);
+  isFlying = false;
+  shotPower = 0.5;
+  spinSpeed = 0;
+  updateUI();
+}
+
+function launchShot() {
+  if (isFlying) return;
+
+  // Choose the hoop that's closest to the ball's x position
+  const leftHoop = new THREE.Vector3(-13.5, rimHeight, 0);
+  const rightHoop = new THREE.Vector3(13.5, rimHeight, 0);
+
+  const distToLeft = ball.position.distanceTo(leftHoop);
+  const distToRight = ball.position.distanceTo(rightHoop);
+
+  targetHoop = distToLeft < distToRight ? leftHoop : rightHoop;
+  targetZ = targetHoop.z;
+  // Raw direction from ball to hoop
+  const raw = new THREE.Vector3().subVectors(targetHoop, ball.position);
+
+  // Add some vertical lift to create an arc
+  raw.y += 3;
+
+  const dir = raw.normalize();
+
+  const speed = shotPower * 25;
+  velocity.copy(dir.multiplyScalar(speed));
+  spinAxis.copy(velocity.clone().normalize().cross(new THREE.Vector3(0, 1, 0)).normalize());
+  spinSpeed = velocity.length() * 3;  // tweak multiplier for realism
+  spinAxis.copy(velocity.clone().normalize().cross(new THREE.Vector3(0, 1, 0)).normalize());
+  spinSpeed = velocity.length() * 3; // tweak multiplier for realism
+  acceleration.set(0, -9.8, 0);
+  isFlying = true;
+  hasScored = false;
+  shotsAttempted++;
+  updateUI();
 }
 
 //UI Containers
@@ -283,6 +353,55 @@ controlContainer.style.color = 'white';
 controlContainer.style.fontSize = '16px';
 controlContainer.innerHTML = 'Press O to toggle orbit controls';
 document.body.appendChild(controlContainer);
+
+// Shot Power UI
+const powerDisplay = document.createElement('div');
+powerDisplay.style.position = 'absolute';
+powerDisplay.style.top = '80px';
+powerDisplay.style.left = '20px';
+powerDisplay.style.color = 'white';
+powerDisplay.style.fontSize = '16px';
+
+document.body.appendChild(powerDisplay);
+
+const statsDisplay = document.createElement('div');
+statsDisplay.style.position = 'absolute';
+statsDisplay.style.top = '110px';
+statsDisplay.style.left = '20px';
+statsDisplay.style.color = 'white';
+statsDisplay.style.fontSize = '16px';
+document.body.appendChild(statsDisplay);
+
+const shotMessage = document.createElement('div');
+shotMessage.style.position = 'absolute';
+shotMessage.style.top = '150px';
+shotMessage.style.left = '20px';
+shotMessage.style.color = 'white';
+shotMessage.style.fontSize = '28px';
+shotMessage.style.fontWeight = 'bold';
+shotMessage.style.transition = 'opacity 0.5s ease';
+shotMessage.style.opacity = '0'; // start hidden
+document.body.appendChild(shotMessage);
+
+function showShotMessage(text, color = "white") {
+  shotMessage.innerHTML = text;
+  shotMessage.style.color = color;
+  shotMessage.style.opacity = '1';
+  setTimeout(() => {
+    shotMessage.style.opacity = '0';
+  }, 1000);
+}
+
+function updateUI() {
+  powerDisplay.innerHTML = `Shot Power: ${(shotPower * 100).toFixed(0)}%`;
+  statsDisplay.innerHTML = `
+    Attempts: ${shotsAttempted}<br>
+    Made: ${shotsMade}<br>
+    Accuracy: ${shotsAttempted > 0 ? ((shotsMade / shotsAttempted) * 100).toFixed(1) : 0}%<br>
+    Score: ${score}
+  `;
+}
+updateUI();
 
 // Call all setup functions
 addCourtLines();
@@ -313,41 +432,182 @@ instructionsElement.style.textAlign = 'left';
 instructionsElement.innerHTML = `
   <h3>Controls:</h3>
   <p>O - Toggle orbit camera</p>
+  <p>Arrow Keys - Move ball (Left/Right/Forward/Back)</p>
+  <p>W / S - Increase / Decrease shot power</p>
+  <p>Space - Shoot ball</p>
+  <p>R - Reset ball to center</p>
   <p>1 - Top-down view</p>
   <p>2 - Side view</p>
   <p>3 - Backboard view</p>`;
+instructionsElement.style.backgroundColor = "rgba(0, 0, 0, 0.6)";
+instructionsElement.style.padding = "10px";
+instructionsElement.style.borderRadius = "8px";
+instructionsElement.style.width = "220px";
+instructionsElement.style.lineHeight = "1.4";
+instructionsElement.style.fontFamily = "Arial, sans-serif";
 document.body.appendChild(instructionsElement);
 
 // Handle key events
 function handleKeyDown(e) {
-  if (e.key === "o") {
-    isOrbitEnabled = !isOrbitEnabled;
-  }
-  if (e.key === "1") {
-  camera.position.set(0, 25, 0); 
-  camera.lookAt(0, 0, 0);
-  }
-  if (e.key === "2") {
-    camera.position.set(0, 10, 20); 
-    camera.lookAt(0, 0, 0);
-  }
-  if (e.key === "3") {
-    camera.position.set(-25, 8, 0);
-    camera.lookAt(0, 0, 0);
-  }
+  switch (e.key.toLowerCase()) {
+    case 'o':
+      isOrbitEnabled = !isOrbitEnabled;
+      break;
+    case 'arrowleft':
+      if (!isFlying) ball.position.x = Math.max(-HALF_WID, ball.position.x - 0.5);
+      break;
+    case 'arrowright':
+      if (!isFlying) ball.position.x = Math.min(HALF_WID, ball.position.x + 0.5);
+      break;
+    case 'arrowup':
+      if (!isFlying) ball.position.z = Math.max(-HALF_LEN, ball.position.z - 0.5);
+      break;
+    case 'arrowdown':
+      if (!isFlying) ball.position.z = Math.min(HALF_LEN, ball.position.z + 0.5);
+      break;
+    case 'w':
+      shotPower = Math.min(1, shotPower + 0.05);
+      updateUI();
+      break;
+    case 's':
+      shotPower = Math.max(0, shotPower - 0.05);
+      updateUI();
+      break;
+    case 'r':
+      resetBall();
+      break;
+    case ' ':
+      if (!isFlying) launchShot();
+      break;
 
+    
+  }
 }
+
 
 document.addEventListener('keydown', handleKeyDown);
 
 // Animation function
 function animate() {
   requestAnimationFrame(animate);
-  
-  // Update controls
+  const dt = 0.016; // ~60fps fixed step
+
+  if (isFlying) {
+    // 1) Integrate motion
+    velocity.addScaledVector(acceleration, dt);
+    ball.position.addScaledVector(velocity, dt);
+    // 2) Update & apply decoupled spin
+    const tmp = new THREE.Vector3().crossVectors(velocity, new THREE.Vector3(0, 1, 0));
+    const speed = velocity.length() / radius;
+
+    if (tmp.lengthSq() > 1e-6) {
+      spinAxis.copy(tmp.normalize());
+      spinSpeed = speed;
+    }
+
+    const spinAngle = spinSpeed * dt;
+    ball.rotateOnWorldAxis(spinAxis, spinAngle);
+
+
+    // 3) Ground collision
+    if (ball.position.y <= floorY) {
+      ball.position.y = floorY;
+      velocity.y *= -restitution;
+      soundBounce.play();
+      if (Math.abs(velocity.y) < 1) {
+        isFlying = false;
+        velocity.set(0, 0, 0);
+        if (!hasScored) {
+          showShotMessage("MISSED SHOT", "red");
+          setTimeout(() => (shotMessage.innerHTML = ""), 1000);
+        }
+      }
+    }
+
+    // 4) Backboard collision
+    const boardOffset = 0.9 + 0.05 / 2;
+    const boardZ = (targetZ > 0)
+      ? HALF_LEN - boardOffset
+      : -HALF_LEN + boardOffset;
+
+    if (
+      Math.abs(ball.position.z - boardZ) < radius &&
+      ball.position.y > rimHeight - 1 &&
+      ball.position.y < rimHeight + 1
+    ) {
+      velocity.z = -velocity.z * restitution;
+    }
+
+    // 5) Rim collision and scoring
+    const rimOffset = 0.9 + 0.05 / 2 + 0.35;
+    const rimCenter = (targetHoop.x < 0) ? leftRimCenter : rightRimCenter;
+    const dx = ball.position.x - rimCenter.x;
+    const dy = ball.position.y - rimCenter.y;
+    const dz = ball.position.z - rimCenter.z;
+
+    const horizDist = Math.hypot(dx, dz);
+    const ballNearRim = Math.abs(ball.position.y - rimHeight) < 0.4;
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+    // Rim collision
+    const rimThickness = 0.06; 
+    const ballBelowRim = ball.position.y < rimHeight + radius;
+    const distXZ = Math.sqrt(dx*dx + dz*dz);
+
+    // Rim collision (side only)
+    if (distXZ > rimRadius - rimThickness && distXZ < rimRadius + rimThickness && ballBelowRim) {
+      const normal = new THREE.Vector3(dx, 0, dz).normalize();
+      const impact = velocity.dot(normal);
+      if (impact < 0) {
+        velocity.sub(normal.multiplyScalar(impact * restitution));
+        ball.position.add(normal.multiplyScalar(0.02));
+        soundRim.play();
+      }
+    }
+
+    // Score detection
+    if (
+      !hasScored &&
+      velocity.y < 0 &&
+      ballBelowRim &&
+      distXZ < (rimRadius - radius * 1.5) &&
+      velocity.angleTo(new THREE.Vector3(0, -1, 0)) < Math.PI / 4 &&
+      shotPower > 0.3 &&              
+      velocity.length() > 8 && 
+      Math.abs(velocity.x) < 10   
+    ) {
+      hasScored = true;
+      shotsMade++;
+      score += 2;
+      comboCount++;
+      soundScore.play();
+      if (comboCount > 1) {
+        const bonus = comboCount;
+        score += bonus;
+        showShotMessage(`COMBO x${comboCount}! +${2 + bonus} POINTS`, "lime");
+
+      } else {
+        showShotMessage("SHOT MADE!", "lime");
+      }
+      setTimeout(() => (shotMessage.innerHTML = ""), 1000);
+      velocity.set(0, -1, 0);
+    }
+
+    // 6) Missed off-court
+    if (Math.abs(ball.position.z) > HALF_LEN + 1) {
+      isFlying = false;
+      if (!hasScored) {
+        comboCount = 0;
+        showShotMessage("MISSED SHOT", "red");
+        setTimeout(() => (shotMessage.innerHTML = ""), 1000);
+      }
+    }
+
+    updateUI();
+  }
+
   controls.enabled = isOrbitEnabled;
   controls.update();
-  
   renderer.render(scene, camera);
 }
 

@@ -334,17 +334,6 @@ function launchShot() {
   updateUI();
 }
 
-//UI Containers
-const scoreContainer = document.createElement('div');
-scoreContainer.style.position = 'absolute';
-scoreContainer.style.top = '20px';
-scoreContainer.style.left = '20px';
-scoreContainer.style.color = 'white';
-scoreContainer.style.fontSize = '20px';
-scoreContainer.style.fontFamily = 'Arial, sans-serif';
-scoreContainer.innerHTML = 'Score: 0';
-document.body.appendChild(scoreContainer);
-
 const controlContainer = document.createElement('div');
 controlContainer.style.position = 'absolute';
 controlContainer.style.top = '50px';
